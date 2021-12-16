@@ -27,17 +27,28 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-package org.firstinspires.ftc.robotcontroller.external.samples;
+package org.firstinspires.ftc.teamcode;
 
+import com.qualcomm.hardware.bosch.BNO055IMU;
+import com.qualcomm.hardware.bosch.JustLoggingAccelerationIntegrator;
 import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
-import java.util.List;
+import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.hardware.DcMotorSimple;
+import com.qualcomm.robotcore.util.ElapsedTime;
+
 import org.firstinspires.ftc.robotcore.external.ClassFactory;
+import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
+import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
+import org.firstinspires.ftc.robotcore.external.navigation.AxesOrder;
+import org.firstinspires.ftc.robotcore.external.navigation.AxesReference;
 import org.firstinspires.ftc.robotcore.external.navigation.VuforiaLocalizer;
-import org.firstinspires.ftc.robotcore.external.navigation.VuforiaLocalizer.CameraDirection;
-import org.firstinspires.ftc.robotcore.external.tfod.TFObjectDetector;
 import org.firstinspires.ftc.robotcore.external.tfod.Recognition;
+import org.firstinspires.ftc.robotcore.external.tfod.TFObjectDetector;
+
+import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 /**
  * This 2020-2021 OpMode illustrates the basics of using the TensorFlow Object Detection API to
@@ -49,9 +60,8 @@ import org.firstinspires.ftc.robotcore.external.tfod.Recognition;
  * IMPORTANT: In order to use this OpMode, you need to obtain your own Vuforia license key as
  * is explained below.
  */
-@TeleOp(name = "Concept: TensorFlow Object Detection", group = "Concept")
-@Disabled
-public class ConceptTensorFlowObjectDetection extends LinearOpMode {
+@TeleOp(name = "Concept: TensorFlow Object Detection Webcam", group = "Concept")
+public class ConceptTensorFlowObjectDetectionWebcam extends LinearOpMode {
   /* Note: This sample uses the all-objects Tensor Flow model (FreightFrenzy_BCDM.tflite), which contains
    * the following 4 detectable objects
    *  0: Ball,
@@ -71,6 +81,7 @@ public class ConceptTensorFlowObjectDetection extends LinearOpMode {
       "Marker"
     };
 
+
     /*
      * IMPORTANT: You need to obtain your own license key to use Vuforia. The string below with which
      * 'parameters.vuforiaLicenseKey' is initialized is for illustration only, and will not function.
@@ -84,7 +95,7 @@ public class ConceptTensorFlowObjectDetection extends LinearOpMode {
      * and paste it in to your code on the next line, between the double quotes.
      */
     private static final String VUFORIA_KEY =
-            " -- YOUR NEW VUFORIA KEY GOES HERE  --- ";
+            "ATvR6Pn/////AAABmfmeGmTC1EUgmYj6BmA6Y21RJiMfHpsibG9AcZqtT/CjUZoh9Y3uCewPByaTTfvRrqaMKoPSRH7rgQH2LFXssKmtL2nPbNqs1yZEDjuyS3C6ch41sWGq8/5S1tzdZl49MYrl2ZO80R3zU2lTvefStk62Au5VJMPOA8nXVMtmSuDt8NJY8TA7pSh6mYx1qFF1fbXCaj3HZzfAT9b+b/haPDbcwOP8Wwj79qRrWt5je1TM+G5s3ajCVMN1r+8khHatw90rIoShJYogPBxEXDTNxYb48Xg8XZg1HMyNTkdl3aG6lq4uLjJ7Tu1LD230WNDcm0/987HOWPJGCe/U0Nr8ExPrnEaRAE2gbViLGZT5o8+K";
 
     /**
      * {@link #vuforia} is the variable we will use to store our instance of the Vuforia
@@ -97,6 +108,11 @@ public class ConceptTensorFlowObjectDetection extends LinearOpMode {
      * Detection engine.
      */
     private TFObjectDetector tfod;
+
+    private DcMotor left;
+    private DcMotor right;
+    BNO055IMU imu;
+    private static double TICKS_PER_INCH = 651.897;
 
     @Override
     public void runOpMode() {
@@ -120,6 +136,27 @@ public class ConceptTensorFlowObjectDetection extends LinearOpMode {
             // (typically 16/9).
             tfod.setZoom(2.5, 16.0/9.0);
         }
+        left = hardwareMap.get(DcMotor.class, "left");
+        right = hardwareMap.get(DcMotor.class, "right");
+
+        left.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        right.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+
+        left.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        right.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        left.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        right.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        left.setDirection(DcMotorSimple.Direction.REVERSE);
+        right.setDirection(DcMotorSimple.Direction.REVERSE);
+
+        imu = hardwareMap.get(BNO055IMU.class, "imu");
+        BNO055IMU.Parameters parameters = new BNO055IMU.Parameters();
+        parameters.angleUnit = BNO055IMU.AngleUnit.DEGREES;
+        parameters.accelUnit = BNO055IMU.AccelUnit.METERS_PERSEC_PERSEC;
+        parameters.accelerationIntegrationAlgorithm = new JustLoggingAccelerationIntegrator();
+        imu.initialize(parameters);
+
+        ElapsedTime elapsedTime = new ElapsedTime();
 
         /** Wait for the game to begin */
         telemetry.addData(">", "Press Play to start op mode");
@@ -127,28 +164,57 @@ public class ConceptTensorFlowObjectDetection extends LinearOpMode {
         waitForStart();
 
         if (opModeIsActive()) {
-            while (opModeIsActive()) {
+
+            elapsedTime.reset();
+            telemetry.addData("elapsedTime", elapsedTime.time(TimeUnit.MILLISECONDS));
+            telemetry.update();
+            boolean isDuck = false;
+            int duckNum = 0;
+            int markerNum = 0;
+            boolean isMarker = false;
+            while (opModeIsActive() && elapsedTime.time(TimeUnit.SECONDS) < 5) {
+//                telemetry.addData("elapsedTime", elapsedTime.time(TimeUnit.MILLISECONDS));
                 if (tfod != null) {
                     // getUpdatedRecognitions() will return null if no new information is available since
                     // the last time that call was made.
                     List<Recognition> updatedRecognitions = tfod.getUpdatedRecognitions();
                     if (updatedRecognitions != null) {
                       telemetry.addData("# Object Detected", updatedRecognitions.size());
-
                       // step through the list of recognitions and display boundary info.
                       int i = 0;
                       for (Recognition recognition : updatedRecognitions) {
                         telemetry.addData(String.format("label (%d)", i), recognition.getLabel());
                         telemetry.addData(String.format("  left,top (%d)", i), "%.03f , %.03f",
-                                          recognition.getLeft(), recognition.getTop());
+                                recognition.getLeft(), recognition.getTop());
                         telemetry.addData(String.format("  right,bottom (%d)", i), "%.03f , %.03f",
                                 recognition.getRight(), recognition.getBottom());
                         i++;
+                        if(recognition.getLabel().equals("Duck") && recognition.getConfidence() > 0.93) {
+                            isDuck = true;
+                            telemetry.addData("duckNum:", duckNum);
+                            duckNum++;
+                        }
+                        if (recognition.getLabel().equals("Marker") && recognition.getConfidence() > 0.87) {
+                            isMarker = true;
+                            telemetry.addData("markerNum:", markerNum);
+                            markerNum++;
+                        }
                       }
+
                       telemetry.update();
                     }
                 }
             }
+            telemetry.addData("duckNum:", duckNum);
+            telemetry.update();
+            if(isDuck & duckNum > 80) {
+                telemetry.addData("duckNum:", duckNum);
+                telemetry.update();
+                turn(150);
+            } else {
+                turn(-150);
+            }
+
         }
     }
 
@@ -162,7 +228,7 @@ public class ConceptTensorFlowObjectDetection extends LinearOpMode {
         VuforiaLocalizer.Parameters parameters = new VuforiaLocalizer.Parameters();
 
         parameters.vuforiaLicenseKey = VUFORIA_KEY;
-        parameters.cameraDirection = CameraDirection.BACK;
+        parameters.cameraName = hardwareMap.get(WebcamName.class, "Webcam 1");
 
         //  Instantiate the Vuforia engine
         vuforia = ClassFactory.getInstance().createVuforia(parameters);
@@ -177,11 +243,64 @@ public class ConceptTensorFlowObjectDetection extends LinearOpMode {
         int tfodMonitorViewId = hardwareMap.appContext.getResources().getIdentifier(
             "tfodMonitorViewId", "id", hardwareMap.appContext.getPackageName());
         TFObjectDetector.Parameters tfodParameters = new TFObjectDetector.Parameters(tfodMonitorViewId);
-        tfodParameters.minResultConfidence = 0.8f;
-        tfodParameters.isModelTensorFlow2 = true;
-        tfodParameters.inputSize = 320;
-        tfod = ClassFactory.getInstance().createTFObjectDetector(tfodParameters, vuforia);
-        tfod.loadModelFromAsset(TFOD_MODEL_ASSET, LABELS);
+       tfodParameters.minResultConfidence = 0.8f;
+       tfodParameters.isModelTensorFlow2 = true;
+       tfodParameters.inputSize = 320;
+       tfod = ClassFactory.getInstance().createTFObjectDetector(tfodParameters, vuforia);
+       tfod.loadModelFromAsset(TFOD_MODEL_ASSET, LABELS);
     }
 
+    public void driveStraight(double distance) {
+        left.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        right.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        left.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        right.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+
+        double lDistance = -left.getCurrentPosition();
+        double rDistance = -right.getCurrentPosition();
+
+        double sign = Math.signum(distance);
+
+        while(opModeIsActive() && Math.abs((lDistance + rDistance) / 2) < Math.abs(distance)) {
+            double diff = Math.abs(lDistance) - Math.abs(rDistance);
+
+            double leftPower = 0.75;
+            double rightPower = 0.75;
+
+            if (diff > 0) leftPower = 0.5;
+            else rightPower = 0.5;
+
+            left.setPower(leftPower * sign);
+            right.setPower(rightPower * sign);
+
+            lDistance = -left.getCurrentPosition();
+            rDistance = -right.getCurrentPosition();
+
+            telemetry.addData("left distance", lDistance);
+            telemetry.addData("right distance", rDistance);
+            telemetry.addData("angle", imu.getAngularOrientation(AxesReference.EXTRINSIC, AxesOrder.XYZ, AngleUnit.DEGREES).thirdAngle);
+            telemetry.update();
+        }
+        left.setPower(0);
+        right.setPower(0);
+    }
+
+    public void turn(double desiredAngle) {
+        double angle = imu.getAngularOrientation(AxesReference.EXTRINSIC, AxesOrder.XYZ, AngleUnit.DEGREES).thirdAngle;
+        double sign = Math.signum(desiredAngle - angle);
+        double kP = (desiredAngle-angle) * 0.02;
+        while(opModeIsActive() && Math.signum(desiredAngle - angle) == sign) {
+//            kP = (desiredAngle-angle) * 0.01675;
+//            kP = (desiredAngle-angle) * 0.019;
+            left.setPower(-0.4 /* * kP */* sign);
+            right.setPower(0.4 /* * kP */* sign);
+            angle = imu.getAngularOrientation(AxesReference.EXTRINSIC, AxesOrder.XYZ, AngleUnit.DEGREES).thirdAngle;
+
+            telemetry.addData("angle", angle);
+            telemetry.addData("desiredAngle", desiredAngle);
+            telemetry.update();
+        }
+        left.setPower(0);
+        right.setPower(0);
+    }
 }
